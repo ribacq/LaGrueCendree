@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	GRID_WIDTH  int = 1280
-	GRID_HEIGHT int = 720
+	GRID_WIDTH  int = 640
+	GRID_HEIGHT int = 360
 	DIAGONAL    int = GRID_WIDTH + GRID_HEIGHT
-	MAX_DIST    int = 128
+	MAX_DIST    int = DIAGONAL / 7
 	FRAMES      int = MAX_DIST
 	MAX_VAL     int = MAX_DIST
 	START_VAL   int = MAX_VAL
@@ -87,34 +87,47 @@ func main() {
 				go func(y, x int) {
 					defer wg.Done()
 					// life creation
-					if rand.Intn(RENEW) < 1 {
-						if squares[y][x] <= EMPTY {
-							squares[y][x] = START_VAL
-						}
+					if rand.Intn(RENEW+frame) < 1 && squares[y][x] <= EMPTY {
+						squares[y][x] = START_VAL - (frame * MAX_VAL / FRAMES)
+					}
+
+					// skip empty
+					if squares[y][x] <= EMPTY {
+						return
 					}
 
 					// move to other
 					dy, dx := 0, 0
 					dist := squares[y][x]
 					for yo := y - dist; yo <= y+dist; yo++ {
-						for xo := x - dist + Abs(yo-y); xo <= x+dist-Abs(yo-y); xo++ {
+						for xo := x - dist; xo <= x+dist; xo++ {
+							// yo, xo inside
 							inyo, inxo := Inside(yo, xo)
+
+							// skip empty
 							if squares[inyo][inxo] <= EMPTY {
 								continue
 							}
-							dy += (yo - y)
-							dx += (xo - x)
+
+							// count force
+							dy += inyo - y
+							dx += inxo - x
 						}
 					}
-					dy = Sign(dy)
-					dx = Sign(dx)
+					dy /= dist
+					dx /= dist
 					if rand.Intn(2) < 1 {
 						dy = 0
 					} else {
 						dx = 0
 					}
 					nextY, nextX := Inside(y+dy, x+dx)
-					if (nextY != y || nextX != x) && squares[nextY][nextX]*squares[y][x] <= 0 {
+					for (dy != 0 || dx != 0) && squares[nextY][nextX] > EMPTY {
+						dy -= Sign(dy)
+						dx -= Sign(dx)
+						nextY, nextX = Inside(y+dy, x+dx)
+					}
+					if (nextY != y || nextX != x) && squares[nextY][nextX] <= EMPTY {
 						squares[nextY][nextX], squares[y][x] = squares[y][x]-1, squares[nextY][nextX]-1
 					}
 				}(y, x)
