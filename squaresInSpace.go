@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	GRID_WIDTH  int = 640
-	GRID_HEIGHT int = 360
+	GRID_WIDTH  int = 256
+	GRID_HEIGHT int = 144
 	DIAGONAL    int = GRID_WIDTH + GRID_HEIGHT
-	MAX_DIST    int = DIAGONAL / 7
+	MAX_DIST    int = 32
 	FRAMES      int = MAX_DIST
 	MAX_VAL     int = MAX_DIST
 	START_VAL   int = MAX_VAL
@@ -87,7 +87,7 @@ func main() {
 				go func(y, x int) {
 					defer wg.Done()
 					// life creation
-					if rand.Intn(RENEW+frame) < 1 && squares[y][x] <= EMPTY {
+					if rand.Intn(RENEW) < 1 && squares[y][x] <= EMPTY {
 						squares[y][x] = START_VAL - (frame * MAX_VAL / FRAMES)
 					}
 
@@ -110,17 +110,12 @@ func main() {
 							}
 
 							// count force
-							dy += inyo - y
-							dx += inxo - x
+							dy += yo - y
+							dx += xo - x
 						}
 					}
 					dy /= dist
 					dx /= dist
-					if rand.Intn(2) < 1 {
-						dy = 0
-					} else {
-						dx = 0
-					}
 					nextY, nextX := Inside(y+dy, x+dx)
 					for (dy != 0 || dx != 0) && squares[nextY][nextX] > EMPTY {
 						dy -= Sign(dy)
@@ -129,12 +124,18 @@ func main() {
 					}
 					if (nextY != y || nextX != x) && squares[nextY][nextX] <= EMPTY {
 						squares[nextY][nextX], squares[y][x] = squares[y][x]-1, squares[nextY][nextX]-1
+						return
+					}
+
+					squares[y][x]++
+					if squares[y][x] >= MAX_VAL {
+						squares[y][x] = MAX_VAL - 1
 					}
 				}(y, x)
 			}
 		}
-		wg.Wait()
 	}
+	wg.Wait()
 
 	// display
 	fmt.Println("P3")
