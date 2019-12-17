@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	GRID_WIDTH  int  = 1 + 256
+	GRID_WIDTH  int  = 1 + 144
 	GRID_HEIGHT int  = 1 + 144
 	CONNECT_Y   bool = false
 	CONNECT_X   bool = true
@@ -23,6 +23,7 @@ var (
 	MAGIC       int = DIAGONAL / 9
 	FRAMES      int = MAGIC
 	MAX_VAL     int = MAGIC
+	SPAWN_DIST  int = MAGIC
 	SPAWN_POWER int = MAGIC
 )
 
@@ -77,8 +78,7 @@ func Inside(y, x int) (int, int) {
 }
 
 type Spawn struct {
-	Y, X  int
-	Power int
+	Y, X int
 }
 
 func main() {
@@ -87,14 +87,19 @@ func main() {
 
 	println(GRID_WIDTH, "x", GRID_HEIGHT, "f", FRAMES)
 
+	spawn := Spawn{
+		Y: rand.Intn(GRID_HEIGHT),
+		X: rand.Intn(GRID_WIDTH),
+	}
+
 	// main loop on frames
 	var wg sync.WaitGroup
 	for frame := 0; frame < FRAMES; frame++ {
 		// spawns action
 		for i := 0; i < SPAWN_POWER; i++ {
-			newY, newX := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
+			newY, newX := Inside(spawn.Y+rand.Intn(2*SPAWN_DIST)-SPAWN_DIST, spawn.X+rand.Intn(2*SPAWN_DIST)-SPAWN_DIST)
 			if squares[newY][newX] == 0 {
-				squares[newY][newX] = MAX_VAL
+				squares[newY][newX] = MAX_VAL * (FRAMES - frame) / FRAMES
 			}
 		}
 
@@ -142,10 +147,10 @@ func main() {
 
 							// count force
 							if (CONNECT_Y || inyo == yo) && yo != y {
-								dy += (yo - y)
+								dy += (inyo - y)
 							}
 							if (CONNECT_X || inxo == xo) && xo != x {
-								dx += (xo - x)
+								dx += (inxo - x)
 							}
 						}
 					}
@@ -204,8 +209,8 @@ func main() {
 					}
 					if val <= 0 {
 						fmt.Print(0, 0, -val, " ")
-					} else if val > 0 {
-						fmt.Print(0, val, 0, " ")
+					} else {
+						fmt.Print(rand.Intn(val)/2, val, 0, " ")
 					}
 				}
 				fmt.Println()
@@ -230,6 +235,7 @@ func main() {
 	}
 
 	// display
+	nP, nN := 0.0, 0.0
 	fmt.Println("P3")
 	fmt.Println(GRID_WIDTH, GRID_HEIGHT, MAX_VAL-1)
 	for y := range squares {
@@ -243,13 +249,15 @@ func main() {
 			}
 			if val <= 0 {
 				fmt.Print(0, 0, -val, " ")
-			} else if val > 0 {
-				fmt.Print(0, val, 0, " ")
+				nN++
+			} else {
+				fmt.Print(rand.Intn(val)/2, val, 0, " ")
+				nP++
 			}
 		}
 		fmt.Println()
 	}
 
 	// end
-	println()
+	println("\nP:", int(nP), "N:", int(nN), "N/P:", nN/nP)
 }
