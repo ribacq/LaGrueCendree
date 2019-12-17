@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	GRID_WIDTH  int = 1 + 144
+	GRID_WIDTH  int = 1 + 256
 	GRID_HEIGHT int = 1 + 144
 	DIAGONAL    int = GRID_WIDTH + GRID_HEIGHT
 	SURFACE     int = GRID_WIDTH * GRID_HEIGHT
@@ -20,9 +20,9 @@ var (
 	MAX_DIST    int = DIAGONAL / 9
 	FRAMES      int = MAX_DIST
 	MAX_VAL     int = MAX_DIST
-	SPAWNS      int = 1
-	SPAWN_POWER int = MAX_DIST
-	SPAWN_DIST  int = MAX_DIST
+	SPAWNS      int = MAX_DIST * 9
+	SPAWN_POWER int = MAX_DIST / 2
+	SPAWN_DIST  int = MAX_DIST / 2
 )
 
 var (
@@ -81,31 +81,31 @@ func main() {
 
 	println(GRID_WIDTH, "x", GRID_HEIGHT, "f", FRAMES)
 
-	// spawns
+	// spawns creation
 	spawns := make([]struct{ Y, X int }, SPAWNS)
 	for i := range spawns {
 		spawns[i].Y = rand.Intn(GRID_HEIGHT)
 		spawns[i].X = rand.Intn(GRID_WIDTH)
 	}
-	for _, sp := range spawns {
-		for i := 0; i < SPAWN_POWER; i++ {
-			offY, offX := rand.Intn(2*SPAWN_DIST)-SPAWN_DIST, rand.Intn(2*SPAWN_DIST)-SPAWN_DIST
-			newY, newX := Inside(sp.Y+offY, sp.X+offX)
-			for squares[newY][newX] != 0 || offY*offY+offX*offX > SPAWN_DIST*SPAWN_DIST {
-				offY, offX = rand.Intn(2*SPAWN_DIST)-SPAWN_DIST, rand.Intn(2*SPAWN_DIST)-SPAWN_DIST
-				newY, newX = Inside(sp.Y+offY, sp.X+offX)
-			}
-			if rand.Intn(2) < 1 {
-				squares[newY][newX] = MAX_VAL
-			} else {
-				squares[newY][newX] = -1
-			}
-		}
-	}
 
-	// main loop
+	// main loop on frames
 	var wg sync.WaitGroup
 	for frame := 0; frame < FRAMES; frame++ {
+
+		// spawns action
+		for _, sp := range spawns {
+			for i := 0; i < SPAWN_POWER; i++ {
+				offY, offX := rand.Intn(2*SPAWN_DIST)-SPAWN_DIST, rand.Intn(2*SPAWN_DIST)-SPAWN_DIST
+				newY, newX := Inside(sp.Y+offY, sp.X+offX)
+				if offY*offY+offX*offX < SPAWN_DIST*SPAWN_DIST && squares[newY][newX] == 0 {
+					if rand.Intn(2) < 1 {
+						squares[newY][newX] = MAX_VAL
+					} else {
+						squares[newY][newX] = -1
+					}
+				}
+			}
+		}
 
 		// loop on squares
 		var seenY [GRID_HEIGHT]bool
@@ -128,7 +128,7 @@ func main() {
 					defer wg.Done()
 
 					// skip empty
-					if squares[y][x] == 0 {
+					if squares[y][x] <= 0 {
 						return
 					}
 
@@ -150,11 +150,11 @@ func main() {
 							}
 
 							// count force
-							dy += (yo - y)
-							dx += (xo - x)
+							dy += (inyo - y)
+							dx += (inxo - x)
 						}
 					}
-					if dist > 0 {
+					if dist > 0 && squares[y][x] != 0 {
 						dy /= dist
 						dx /= dist
 					}
@@ -169,7 +169,7 @@ func main() {
 						nextY, nextX = Inside(y+dy, x+dx)
 					}
 					if squares[nextY][nextX]*squares[y][x] <= 0 {
-						squares[nextY][nextX], squares[y][x] = squares[y][x]-1, squares[nextY][nextX]-Sign(squares[y][x])
+						squares[nextY][nextX], squares[y][x] = squares[y][x]-Sign(squares[y][x]), squares[nextY][nextX]-Sign(squares[y][x])
 					} else if ry == 0 && rx == 0 {
 						dir := rand.Intn(len(DIRECTIONS))
 						nextY, nextX = Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
@@ -180,33 +180,33 @@ func main() {
 							i++
 						}
 						if i < len(DIRECTIONS) {
-							squares[nextY][nextX], squares[y][x] = squares[y][x]-1, squares[nextY][nextX]-Sign(squares[y][x])
+							squares[nextY][nextX], squares[y][x] = squares[y][x]-Sign(squares[y][x]), squares[nextY][nextX]-Sign(squares[y][x])
 						}
 					}
 				}(y, x)
 			}
 		}
 		wg.Wait()
-	}
 
-	// display
-	fmt.Println("P3")
-	fmt.Println(GRID_WIDTH-1, GRID_HEIGHT-1, MAX_VAL-1)
-	for y := range squares {
-		for x := range squares[y] {
-			val := squares[y][x]
-			if y < GRID_HEIGHT-1 && x < GRID_WIDTH-1 {
-				val = (squares[y][x] + squares[y+1][x] + squares[y][x+1] + squares[y+1][x+1]) / 4
-			} else {
-				continue
+		// display
+		fmt.Println("P3")
+		fmt.Println(GRID_WIDTH, GRID_HEIGHT, MAX_VAL-1)
+		for y := range squares {
+			for x := range squares[y] {
+				val := squares[y][x]
+				if y < GRID_HEIGHT-1 && x < GRID_WIDTH-1 {
+					val = (squares[y][x] + squares[y+1][x] + squares[y][x+1] + squares[y+1][x+1]) / 4
+				} else {
+					//continue
+				}
+				if val <= 0 {
+					fmt.Print(0, 0, -val, " ")
+				} else if val > 0 {
+					fmt.Print(rand.Intn(val), val, 0, " ")
+				}
 			}
-			if val <= 0 {
-				fmt.Print(0, 0, -val, " ")
-			} else if val > 0 {
-				fmt.Print(rand.Intn(val), val, 0, " ")
-			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	// end
