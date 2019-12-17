@@ -10,19 +10,20 @@ import (
 )
 
 const (
-	GRID_WIDTH  int = 1 + 256
-	GRID_HEIGHT int = 1 + 144
-	DIAGONAL    int = GRID_WIDTH + GRID_HEIGHT
-	SURFACE     int = GRID_WIDTH * GRID_HEIGHT
+	GRID_WIDTH  int  = 1 + 256
+	GRID_HEIGHT int  = 1 + 144
+	CONNECT_Y   bool = false
+	CONNECT_X   bool = true
+	GIF         bool = false
 )
 
 var (
-	MAX_DIST    int = DIAGONAL / 9
-	FRAMES      int = MAX_DIST
-	MAX_VAL     int = MAX_DIST
-	SPAWNS      int = MAX_DIST * 9
-	SPAWN_POWER int = MAX_DIST / 2
-	SPAWN_DIST  int = MAX_DIST / 2
+	DIAGONAL    int = GRID_WIDTH + GRID_HEIGHT
+	SURFACE     int = GRID_WIDTH * GRID_HEIGHT
+	MAGIC       int = DIAGONAL / 9
+	FRAMES      int = MAGIC
+	MAX_VAL     int = MAGIC
+	SPAWN_POWER int = MAGIC
 )
 
 var (
@@ -75,35 +76,25 @@ func Inside(y, x int) (int, int) {
 	return y, x
 }
 
+type Spawn struct {
+	Y, X  int
+	Power int
+}
+
 func main() {
 	var squares [GRID_HEIGHT][GRID_WIDTH]int
 	rand.Seed(time.Now().UnixNano())
 
 	println(GRID_WIDTH, "x", GRID_HEIGHT, "f", FRAMES)
 
-	// spawns creation
-	spawns := make([]struct{ Y, X int }, SPAWNS)
-	for i := range spawns {
-		spawns[i].Y = rand.Intn(GRID_HEIGHT)
-		spawns[i].X = rand.Intn(GRID_WIDTH)
-	}
-
 	// main loop on frames
 	var wg sync.WaitGroup
 	for frame := 0; frame < FRAMES; frame++ {
-
 		// spawns action
-		for _, sp := range spawns {
-			for i := 0; i < SPAWN_POWER; i++ {
-				offY, offX := rand.Intn(2*SPAWN_DIST)-SPAWN_DIST, rand.Intn(2*SPAWN_DIST)-SPAWN_DIST
-				newY, newX := Inside(sp.Y+offY, sp.X+offX)
-				if offY*offY+offX*offX < SPAWN_DIST*SPAWN_DIST && squares[newY][newX] == 0 {
-					if rand.Intn(2) < 1 {
-						squares[newY][newX] = MAX_VAL
-					} else {
-						squares[newY][newX] = -1
-					}
-				}
+		for i := 0; i < SPAWN_POWER; i++ {
+			newY, newX := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
+			if squares[newY][newX] == 0 {
+				squares[newY][newX] = MAX_VAL
 			}
 		}
 
@@ -128,7 +119,7 @@ func main() {
 					defer wg.Done()
 
 					// skip empty
-					if squares[y][x] <= 0 {
+					if squares[y][x] == 0 {
 						return
 					}
 
@@ -138,7 +129,7 @@ func main() {
 
 					// move to other
 					dy, dx := 0, 0
-					dist := (squares[y][x] + MAX_VAL) % MAX_VAL
+					dist := ((squares[y][x] + MAX_VAL) % MAX_VAL)
 					for yo := y - dist; yo <= y+dist; yo++ {
 						for xo := x - dist; xo <= x+dist; xo++ {
 							// yo, xo inside
@@ -150,16 +141,20 @@ func main() {
 							}
 
 							// count force
-							dy += (inyo - y)
-							dx += (inxo - x)
+							if (CONNECT_Y || inyo == yo) && yo != y {
+								dy += (yo - y)
+							}
+							if (CONNECT_X || inxo == xo) && xo != x {
+								dx += (xo - x)
+							}
 						}
 					}
+					ry, rx := Abs(dy), Abs(dx)
 					if dist > 0 && squares[y][x] != 0 {
 						dy /= dist
 						dx /= dist
 					}
 					nextY, nextX := Inside(y+dy, x+dx)
-					ry, rx := Abs(dy), Abs(dx)
 					for (dy != 0 || dx != 0) && squares[nextY][nextX]*squares[y][x] > 0 {
 						if rand.Intn(ry+rx) < ry {
 							dy -= Sign(dy)
@@ -170,18 +165,24 @@ func main() {
 					}
 					if squares[nextY][nextX]*squares[y][x] <= 0 {
 						squares[nextY][nextX], squares[y][x] = squares[y][x]-Sign(squares[y][x]), squares[nextY][nextX]-Sign(squares[y][x])
-					} else if ry == 0 && rx == 0 {
-						dir := rand.Intn(len(DIRECTIONS))
+						return
+					}
+
+					// move randomly
+					dir := rand.Intn(len(DIRECTIONS))
+					nextY, nextX = Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
+					i := 0
+					for i < len(DIRECTIONS) {
+						dir = (dir + 1) % len(DIRECTIONS)
 						nextY, nextX = Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
-						i := 0
-						for i < len(DIRECTIONS) && squares[nextY][nextX]*squares[y][x] > 0 {
-							dir = (dir + 1) % len(DIRECTIONS)
-							nextY, nextX = Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
-							i++
+						if squares[nextY][nextX]*squares[y][x] <= 0 {
+							break
 						}
-						if i < len(DIRECTIONS) {
-							squares[nextY][nextX], squares[y][x] = squares[y][x]-Sign(squares[y][x]), squares[nextY][nextX]-Sign(squares[y][x])
-						}
+						i++
+					}
+					if i < len(DIRECTIONS) {
+						squares[nextY][nextX], squares[y][x] = squares[y][x]+Sign(squares[y][x]), squares[nextY][nextX]-Sign(squares[y][x])
+						return
 					}
 				}(y, x)
 			}
@@ -189,24 +190,64 @@ func main() {
 		wg.Wait()
 
 		// display
-		fmt.Println("P3")
-		fmt.Println(GRID_WIDTH, GRID_HEIGHT, MAX_VAL-1)
-		for y := range squares {
-			for x := range squares[y] {
-				val := squares[y][x]
-				if y < GRID_HEIGHT-1 && x < GRID_WIDTH-1 {
-					val = (squares[y][x] + squares[y+1][x] + squares[y][x+1] + squares[y+1][x+1]) / 4
-				} else {
-					//continue
+		if GIF {
+			fmt.Println("P3")
+			fmt.Println(GRID_WIDTH, GRID_HEIGHT, MAX_VAL-1)
+			for y := range squares {
+				for x := range squares[y] {
+					val := squares[y][x]
+					if y < GRID_HEIGHT-1 && x < GRID_WIDTH-1 {
+						rpy := Abs(Sign(squares[y+1][x]))
+						rpx := Abs(Sign(squares[y][x+1]))
+						rpyx := Abs(Sign(squares[y+1][x+1]))
+						val = (squares[y][x] + squares[y+1][x]*rpy + squares[y][x+1]*rpx + squares[y+1][x+1]*rpyx) / (1 + rpy + rpx + rpyx)
+					}
+					if val <= 0 {
+						fmt.Print(0, 0, -val, " ")
+					} else if val > 0 {
+						fmt.Print(0, val, 0, " ")
+					}
 				}
-				if val <= 0 {
-					fmt.Print(0, 0, -val, " ")
-				} else if val > 0 {
-					fmt.Print(rand.Intn(val), val, 0, " ")
+				fmt.Println()
+			}
+		}
+	}
+
+	// delete isolated positives
+	for y := range squares {
+		for x := range squares[y] {
+			if squares[y][x] > 0 {
+				surroundings := 0
+				for dir := range DIRECTIONS {
+					nhbY, nhbX := Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
+					surroundings += (squares[nhbY][nhbX])
+				}
+				if surroundings <= 0 {
+					squares[y][x] *= -1
 				}
 			}
-			fmt.Println()
 		}
+	}
+
+	// display
+	fmt.Println("P3")
+	fmt.Println(GRID_WIDTH, GRID_HEIGHT, MAX_VAL-1)
+	for y := range squares {
+		for x := range squares[y] {
+			val := squares[y][x]
+			if y < GRID_HEIGHT-1 && x < GRID_WIDTH-1 {
+				rpy := Abs(Sign(squares[y+1][x]))
+				rpx := Abs(Sign(squares[y][x+1]))
+				rpyx := Abs(Sign(squares[y+1][x+1]))
+				val = (squares[y][x] + squares[y+1][x]*rpy + squares[y][x+1]*rpx + squares[y+1][x+1]*rpyx) / 4
+			}
+			if val <= 0 {
+				fmt.Print(0, 0, -val, " ")
+			} else if val > 0 {
+				fmt.Print(0, val, 0, " ")
+			}
+		}
+		fmt.Println()
 	}
 
 	// end
