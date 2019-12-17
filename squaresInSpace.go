@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	GRID_WIDTH  int  = 1 + 144
-	GRID_HEIGHT int  = 1 + 144
+	GRID_WIDTH  int  = 1 + 640
+	GRID_HEIGHT int  = 1 + 360
 	CONNECT_Y   bool = false
 	CONNECT_X   bool = true
 	GIF         bool = false
@@ -77,29 +77,20 @@ func Inside(y, x int) (int, int) {
 	return y, x
 }
 
-type Spawn struct {
-	Y, X int
-}
-
 func main() {
 	var squares [GRID_HEIGHT][GRID_WIDTH]int
 	rand.Seed(time.Now().UnixNano())
 
 	println(GRID_WIDTH, "x", GRID_HEIGHT, "f", FRAMES)
 
-	spawn := Spawn{
-		Y: rand.Intn(GRID_HEIGHT),
-		X: rand.Intn(GRID_WIDTH),
-	}
-
 	// main loop on frames
 	var wg sync.WaitGroup
 	for frame := 0; frame < FRAMES; frame++ {
 		// spawns action
 		for i := 0; i < SPAWN_POWER; i++ {
-			newY, newX := Inside(spawn.Y+rand.Intn(2*SPAWN_DIST)-SPAWN_DIST, spawn.X+rand.Intn(2*SPAWN_DIST)-SPAWN_DIST)
+			newY, newX := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
 			if squares[newY][newX] == 0 {
-				squares[newY][newX] = MAX_VAL * (FRAMES - frame) / FRAMES
+				squares[newY][newX] = 1
 			}
 		}
 
@@ -128,6 +119,7 @@ func main() {
 						return
 					}
 
+					// correct excess negatives
 					if squares[y][x] <= -MAX_VAL {
 						squares[y][x] = 1 - MAX_VAL
 					}
@@ -147,12 +139,16 @@ func main() {
 
 							// count force
 							if (CONNECT_Y || inyo == yo) && yo != y {
-								dy += (inyo - y)
+								dy += (yo - y)
 							}
 							if (CONNECT_X || inxo == xo) && xo != x {
-								dx += (inxo - x)
+								dx += (xo - x)
 							}
 						}
+					}
+					if squares[y][x] < 0 {
+						dy /= -squares[y][x]
+						dx /= -squares[y][x]
 					}
 					ry, rx := Abs(dy), Abs(dx)
 					if dist > 0 && squares[y][x] != 0 {
