@@ -30,9 +30,12 @@ var (
 )
 
 var (
-	DIRECTIONS [8][2]int = [8][2]int{
+	DIRECTIONS [20][2]int = [20][2]int{
 		{0, 1}, {0, -1}, {1, 0}, {-1, 0},
 		{0, 2}, {0, -2}, {2, 0}, {-2, 0},
+		{-1, -1}, {-1, 1}, {1, -1}, {1, 1},
+		{-2, -1}, {-2, 1}, {-1, 2}, {1, 2},
+		{2, 1}, {2, -1}, {1, -2}, {-1, -2},
 	}
 )
 
@@ -68,54 +71,130 @@ func Inside(y, x int) (int, int) {
 	return y, x
 }
 
-func display(squares [GRID_HEIGHT][GRID_WIDTH]int, cities bool) (nP, nN int) {
+const (
+	TERRAIN_SEA = iota
+	TERRAIN_LAND
+)
+
+type Color struct {
+	R, G, B int
+}
+
+type SquareTerrain struct {
+	Val          int
+	Terrain      int
+	Surroundings int
+	Color        Color
+}
+
+func display(squares [GRID_HEIGHT][GRID_WIDTH]int, cities bool) (nLand, nSea int) {
+	// inner model
+	var grid [GRID_HEIGHT][GRID_WIDTH]SquareTerrain
+	for y := range grid {
+		for x := range grid[y] {
+			grid[y][x].Val = squares[y][x]
+		}
+	}
+
 	// delete isolated
-	for _, y := range rand.Perm(GRID_HEIGHT) {
-		for _, x := range rand.Perm(GRID_WIDTH) {
-			surroundings := 0
+	for i := 0; i < 2; i++ {
+		for y := range grid {
+			for x := range grid[y] {
+				grid[y][x].Surroundings = 0
+				for dir := range DIRECTIONS {
+					nhbY, nhbX := Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
+					grid[y][x].Surroundings += grid[nhbY][nhbX].Val
+				}
+				if grid[y][x].Surroundings*grid[y][x].Val < 0 {
+					grid[y][x].Val *= -1
+				}
+			}
+		}
+	}
+
+	// terrain: land and sea
+	for y := range grid {
+		for x := range grid[y] {
+			if grid[y][x].Val <= 0 {
+				grid[y][x].Terrain = TERRAIN_SEA
+				grid[y][x].Val *= -1
+				nSea++
+			} else {
+				grid[y][x].Terrain = TERRAIN_LAND
+				nLand++
+			}
+		}
+	}
+
+	// smooth and detect min and max land and sea
+	minL, maxL, minS, maxS := -1, -1, -1, -1
+	for _, y := range rand.Perm(len(grid)) {
+		for _, x := range rand.Perm(len(grid[y])) {
 			for dir := range DIRECTIONS {
 				nhbY, nhbX := Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
-				surroundings += squares[nhbY][nhbX]
+				grid[y][x].Val += grid[nhbY][nhbX].Val
 			}
-			if surroundings*squares[y][x] < 0 {
-				squares[y][x] *= -1
+			grid[y][x].Val /= 1 + len(DIRECTIONS)
+
+			// normalize
+			if grid[y][x].Val >= MAX_VAL {
+				grid[y][x].Val = MAX_VAL - 1
+			}
+
+			// min and max land
+			if grid[y][x].Terrain == TERRAIN_LAND {
+				if minL == -1 || minL > grid[y][x].Val {
+					minL = grid[y][x].Val
+				}
+				if maxL == -1 || maxL < grid[y][x].Val {
+					maxL = grid[y][x].Val
+				}
+			}
+
+			// min and max sea
+			if grid[y][x].Terrain == TERRAIN_SEA {
+				if minS == -1 || minS > grid[y][x].Val {
+					minS = grid[y][x].Val
+				}
+				if maxS == -1 || maxS < grid[y][x].Val {
+					maxS = grid[y][x].Val
+				}
+			}
+		}
+	}
+
+	// colors
+	for y := range grid {
+		for x := range grid[y] {
+			if grid[y][x].Terrain == TERRAIN_LAND {
+				grid[y][x].Val = grid[y][x].Val * 255 / maxL
+				grid[y][x].Color = Color{
+					R: grid[y][x].Val * 2 / 3,
+					G: grid[y][x].Val,
+					B: 0,
+				}
+			} else if grid[y][x].Terrain == TERRAIN_SEA {
+				grid[y][x].Val = grid[y][x].Val * 255 / maxS
+				grid[y][x].Color = Color{
+					R: 0,
+					G: 0,
+					B: grid[y][x].Val,
+				}
 			}
 		}
 	}
 
 	// display
 	fmt.Println("P3")
-	fmt.Println(GRID_WIDTH, GRID_HEIGHT, MAX_VAL-1)
-	for y := 0; y < GRID_HEIGHT; y++ {
-		for x := 0; x < GRID_WIDTH; x++ {
-			val := squares[y][x]
-			for dir := range DIRECTIONS {
-				nhbY, nhbX := Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
-				val += squares[nhbY][nhbX]
-			}
-			val /= 1 + len(DIRECTIONS)
-			if val <= -MAX_VAL {
-				val = 1 - MAX_VAL
-			}
-			if val >= MAX_VAL {
-				val = MAX_VAL - 1
-			}
-			if val <= 0 {
-				fmt.Print(0, 0, -val/2, " ")
-				nN++
-			} else {
-				if cities && squares[y][x] <= 0 && rand.Intn(4) < 1 {
-					fmt.Print(MAX_VAL/2, 0, 0, " ")
-				} else {
-					fmt.Print(rand.Intn(val)/2, val, 0, " ")
-				}
-				nP++
-			}
+	fmt.Println(GRID_WIDTH, GRID_HEIGHT, 255)
+	for y := range grid {
+		for x := range grid[y] {
+			fmt.Print(grid[y][x].Color.R, grid[y][x].Color.G, grid[y][x].Color.B, " ")
 		}
 		fmt.Println()
 	}
 
-	return nP, nN
+	return
 }
 
 func main() {
@@ -139,7 +218,7 @@ func main() {
 		sy := 0
 		for _, y := range rand.Perm(GRID_HEIGHT) {
 			sy++
-			print("              \r", frame, " ", sy)
+			print("\rframe ", frame, " (", sy, ")")
 			for _, x := range rand.Perm(GRID_WIDTH) {
 				wg.Add(1)
 				go func(y, x int) {
@@ -208,8 +287,6 @@ func main() {
 							return
 						}
 					}
-
-					squares[y][x]--
 				}(y, x)
 			}
 		}
@@ -217,11 +294,14 @@ func main() {
 
 		// display
 		if GIF {
+			print("\tgenerating image... ")
 			display(squares, false)
+			print("done")
 		}
 	}
 
 	// end
-	nP, nN := display(squares, true)
-	println("\nP:", nP, "N:", nN, "P%:", 100*nP/SURFACE)
+	print("\ngenerating image...")
+	nLand, nSea := display(squares, true)
+	println("done\nLand:", nLand, "Sea:", nSea, "Land%:", 100*nLand/SURFACE)
 }
