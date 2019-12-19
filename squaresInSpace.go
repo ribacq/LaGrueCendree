@@ -169,7 +169,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int, cities bool) (nLand, nSea int
 			if grid[y][x].Terrain == TERRAIN_LAND {
 				grid[y][x].Val = grid[y][x].Val * 255 / maxL
 				grid[y][x].Color = Color{
-					R: grid[y][x].Val * 2 / 3,
+					R: grid[y][x].Val / 2,
 					G: grid[y][x].Val,
 					B: 0,
 				}
@@ -204,11 +204,12 @@ func main() {
 	println(GRID_WIDTH, "x", GRID_HEIGHT, "f", FRAMES)
 
 	// spawn
+	newY, newX := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
 	for i := 0; i < SPAWN_POWER; i++ {
-		newY, newX := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
 		if squares[newY][newX] == 0 {
 			squares[newY][newX] = MAX_VAL
 		}
+		newY, newX = Inside(newY+rand.Intn(MAX_VAL), newX+rand.Intn(MAX_VAL))
 	}
 
 	// main loop on frames
@@ -257,11 +258,10 @@ func main() {
 						}
 					}
 					ry, rx := Abs(dy), Abs(dx)
-					if squares[y][x] < 0 && squares[y][x] > -MAX_VAL {
+					if squares[y][x] < 0 {
 						dy /= -squares[y][x]
 						dx /= -squares[y][x]
-					}
-					if dist > 0 {
+					} else if dist > 0 {
 						dy /= dist
 						dx /= dist
 					}
