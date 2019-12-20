@@ -10,8 +10,8 @@ import (
 
 // make your choice here
 const (
-	GRID_WIDTH  int  = 256
-	GRID_HEIGHT int  = 128
+	GRID_WIDTH  int  = 200
+	GRID_HEIGHT int  = 100
 	CONNECT_Y   bool = false
 	CONNECT_X   bool = false
 	GIF         bool = false
@@ -150,7 +150,7 @@ func main() {
 					}
 
 					// move randomly
-					for dir := range rand.Perm(len(DIRECTIONS)) {
+					for _, dir := range rand.Perm(len(DIRECTIONS)) {
 						nextY, nextX = Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
 						if squares[nextY][nextX]*squares[y][x] <= 0 {
 							squares[nextY][nextX], squares[y][x] = squares[y][x]+Sign(squares[y][x]), squares[nextY][nextX]-Sign(squares[y][x])
@@ -164,14 +164,14 @@ func main() {
 
 		// display
 		if GIF {
-			print("\tgenerating image... ")
+			print("\trendering image... ")
 			display(squares)
 			print("done")
 		}
 	}
 
 	// end
-	print("\ngenerating image...")
+	print("\nredering image...")
 	nLand, nSea := display(squares)
 	println("done\nLand:", nLand, "Sea:", nSea, "Land%:", 100*nLand/SURFACE)
 }

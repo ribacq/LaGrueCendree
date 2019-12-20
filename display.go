@@ -10,9 +10,13 @@ const (
 	TERRAIN_LAND
 	TERRAIN_MOUNTAIN
 	TERRAIN_RIVER
-	TERRAIN_RIVER_HEAD
 	TERRAIN_CITY
 	TERRAIN_MAP_BORDER
+)
+
+var (
+	NB_RIVERS int = MAGIC
+	NB_CITIES int = MAGIC
 )
 
 var (
@@ -29,16 +33,118 @@ type Color struct {
 	R, G, B int
 }
 
+func HSVtoRGB(H int, S, V float64) (out Color) {
+	C := V * S
+	X := C * float64(1-Abs(H/60%2-1))
+	m := V - C
+	var r, g, b float64
+	if H < 60 {
+		r, g, b = C, X, 0.0
+	} else if H < 120 {
+		r, g, b = X, C, 0.0
+	} else if H < 180 {
+		r, g, b = 0.0, C, X
+	} else if H < 240 {
+		r, g, b = 0.0, X, C
+	} else if H < 300 {
+		r, g, b = X, 0.0, C
+	} else {
+		r, g, b = C, 0.0, X
+	}
+	out = Color{
+		R: int((r + m) * 255),
+		G: int((g + m) * 255),
+		B: int((b + m) * 255),
+	}
+	if out.R > 255 {
+		out.R = 255
+	} else if out.R < 0 {
+		out.R = 0
+	}
+	if out.G > 255 {
+		out.G = 255
+	} else if out.G < 0 {
+		out.G = 0
+	}
+	if out.B > 255 {
+		out.B = 255
+	} else if out.B < 0 {
+		out.B = 0
+	}
+	return
+}
+
 type SquareTerrain struct {
-	Val          int
-	Terrain      int
-	Surroundings int
-	Color        Color
+	Val     int
+	Terrain int
+	Color   Color
 }
 
 type River struct {
-	Y, X int
-	Dir  int
+	i     int
+	y, x  []int
+	dirs  []int
+	Level int
+}
+
+func (r *River) Len() int {
+	return len(r.y)
+}
+
+func (r *River) Y() int {
+	return r.y[r.i]
+}
+
+func (r *River) X() int {
+	return r.x[r.i]
+}
+
+func (r *River) Dir() int {
+	return r.dirs[r.i]
+}
+
+func (r *River) I() int {
+	return r.i
+}
+
+func (r *River) WasAt(y, x int) bool {
+	for i := range r.y {
+		if r.y[i] == y && r.x[i] == x {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *River) Disallow(dir int) {
+	y, x := Inside(r.Y()+DIR_NEXT[dir][0], r.X()+DIR_NEXT[dir][1])
+	if !r.WasAt(y, x) {
+		r.y = append(r.y, y)
+		r.x = append(r.x, x)
+		r.dirs = append(r.dirs, dir)
+	}
+}
+
+func (r *River) Move(dir int) {
+	y, x := Inside(r.Y()+DIR_NEXT[dir][0], r.X()+DIR_NEXT[dir][1])
+	r.i = len(r.y)
+	r.y = append(r.y, y)
+	r.x = append(r.x, x)
+	r.dirs = append(r.dirs, dir)
+}
+
+func (r *River) GoBack() bool {
+	if r.i > 0 {
+		r.i--
+		return true
+	}
+	return false
+}
+
+func (r *River) SetColor(color Color, grid *Grid) {
+	for i := range r.y {
+		grid[r.y[i]][r.x[i]].Color = color
+	}
 }
 
 type City struct {
@@ -46,9 +152,11 @@ type City struct {
 	Size int
 }
 
+type Grid [GRID_HEIGHT][GRID_WIDTH]SquareTerrain
+
 func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 	// inner model
-	var grid [GRID_HEIGHT][GRID_WIDTH]SquareTerrain
+	grid := &Grid{}
 	for y := range grid {
 		for x := range grid[y] {
 			grid[y][x].Val = squares[y][x]
@@ -59,12 +167,12 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 	for i := 0; i < 2; i++ {
 		for y := range grid {
 			for x := range grid[y] {
-				grid[y][x].Surroundings = 0
-				for dir := range DIRECTIONS {
-					nhbY, nhbX := Inside(y+DIRECTIONS[dir][0], x+DIRECTIONS[dir][1])
-					grid[y][x].Surroundings += grid[nhbY][nhbX].Val
+				surroundings := 0
+				for _, dir := range DIRECTIONS {
+					nhbY, nhbX := Inside(y+dir[0], x+dir[1])
+					surroundings += grid[nhbY][nhbX].Val
 				}
-				if grid[y][x].Surroundings*grid[y][x].Val < 0 {
+				if surroundings*grid[y][x].Val < 0 {
 					grid[y][x].Val *= -1
 				}
 			}
@@ -162,41 +270,50 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 
 	// rivers
 	var rivers []*River
-	for len(rivers) < MAGIC/3 {
+	for len(rivers) < NB_RIVERS {
 		y, x := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
 		if grid[y][x].Terrain != TERRAIN_SEA {
-			grid[y][x].Terrain = TERRAIN_RIVER_HEAD
+			grid[y][x].Terrain = TERRAIN_RIVER
 			rivers = append(rivers, &River{
-				Y:   y,
-				X:   x,
-				Dir: rand.Intn(len(DIR_NEXT)),
+				y:     []int{y},
+				x:     []int{x},
+				dirs:  []int{rand.Intn(len(DIR_NEXT))},
+				Level: grid[y][x].Val,
 			})
 		}
 	}
-	for len(rivers) > 0 {
-		river := rivers[0]
-		// for each river still alive, decide where to go
-		highDir, highLevel := -1, -1
+	var nbDead, nbMerge int
+	for iRiver := 0; iRiver < len(rivers); {
+		river := rivers[iRiver]
+		// for each river not at sea yet, decide where to go
+		highDir, highLevel := -1, river.Level
 		highLDir := -1
-		var nhbY, nhbX int
-		lake := true
-		atSea := false
-		dir := river.Dir
-		for _, offset := range rand.Perm(len(DIR_NEXT)) {
-			dir = (dir + offset) % len(DIR_NEXT)
-			if dir == (river.Dir+2)%len(DIR_NEXT) {
+		var end bool
+		for _, dir := range rand.Perm(len(DIR_NEXT)) {
+			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[dir][0], river.X()+DIR_NEXT[dir][1])
+			if river.WasAt(nhbY, nhbX) {
 				continue
 			}
-			nhbY, nhbX = Inside(river.Y+DIR_NEXT[dir][0], river.X+DIR_NEXT[dir][1])
-			if grid[nhbY][nhbX].Terrain != TERRAIN_RIVER {
-				lake = false
+			tight := false
+			for _, diro := range DIR_SQUARE {
+				onY, onX := Inside(nhbY+diro[0], nhbX+diro[1])
+				if onY != river.Y() && onX != river.X() {
+					tight = tight || river.WasAt(onY, onX)
+				}
 			}
-			if grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
+			if tight {
+				continue
+			}
+			if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER || grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
+				// FIXME: merge loops
 				highDir = dir
-				atSea = true
+				end = true
+				if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER {
+					nbMerge++
+				}
 				break
 			}
-			if grid[nhbY][nhbX].Val > highLevel {
+			if grid[nhbY][nhbX].Val >= highLevel {
 				highDir = dir
 				highLevel = grid[nhbY][nhbX].Val
 				if grid[nhbY][nhbX].Terrain != TERRAIN_RIVER {
@@ -205,34 +322,43 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			}
 		}
 
-		// fill up and go somewhere is possible
-		if highLDir != -1 && !atSea {
+		println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "i:", river.I(), "level:", river.Level)
+
+		// better to move towards land if sea isn’t nearby
+		if highLDir != -1 && !end {
 			highDir = highLDir
 		}
+
+		// act
 		if highDir == -1 {
-			continue
-		}
-		nhbY, nhbX = Inside(river.Y+DIR_NEXT[highDir][0], river.X+DIR_NEXT[highDir][1])
-		if grid[nhbY][nhbX].Terrain != TERRAIN_SEA || lake {
-			if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER {
-				grid[river.Y][river.X].Terrain = TERRAIN_LAND
-			} else {
-				grid[river.Y][river.X].Terrain = TERRAIN_RIVER
+			// go back
+			println(iRiver, ", back")
+			grid[river.Y()][river.X()].Terrain = TERRAIN_LAND
+			backAtSource := !river.GoBack()
+			river.Level--
+			if backAtSource && river.Level < 0 {
+				iRiver++
+				nbDead++
 			}
-			grid[nhbY][nhbX].Terrain = TERRAIN_RIVER_HEAD
-			river.Y = nhbY
-			river.X = nhbX
-			continue
-		} else if len(rivers) > 1 {
-			rivers = rivers[1:]
+		} else if !end {
+			// move forward
+			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[highDir][0], river.X()+DIR_NEXT[highDir][1])
+			grid[nhbY][nhbX].Terrain = TERRAIN_RIVER
+			river.Level = grid[nhbY][nhbX].Val
+			river.Move(highDir)
 		} else {
-			rivers = []*River{}
+			// skip to next river
+			iRiver++
 		}
 	}
+	for iRiver, river := range rivers {
+		river.SetColor(HSVtoRGB(iRiver*240/len(rivers), 1.0, 1.0), grid)
+	}
+	println(len(rivers), "sea:", len(rivers)-nbMerge-nbDead, "merge:", nbMerge, "dead:", nbDead)
 
 	// cities
 	var cities []*City
-	for len(cities) < MAGIC {
+	for len(cities) < NB_CITIES {
 		y, x := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
 		if grid[y][x].Terrain != TERRAIN_LAND {
 			continue
@@ -244,13 +370,12 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 		}
 
 		cityUpsizers := map[int]bool{
-			TERRAIN_SEA:        false,
-			TERRAIN_RIVER:      false,
-			TERRAIN_RIVER_HEAD: false,
+			TERRAIN_SEA:   false,
+			TERRAIN_RIVER: false,
 		}
 		for _, dir := range DIRECTIONS {
+			nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 			for terrain := range cityUpsizers {
-				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 				if grid[nhbY][nhbX].Terrain == terrain {
 					cityUpsizers[terrain] = true
 				}
@@ -260,6 +385,9 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			if ok {
 				city.Size++
 			}
+		}
+		if rand.Intn(5) < 1 {
+			city.Size += 1
 		}
 
 		if city.Size == 0 && rand.Intn(100) < 90 {
@@ -338,7 +466,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 					G: v * 228 / 255,
 					B: v * 170 / 255,
 				}
-			case TERRAIN_RIVER, TERRAIN_RIVER_HEAD:
+			case TERRAIN_RIVER:
 				grid[y][x].Color = Color{
 					R: v / 4,
 					G: v / 2,
