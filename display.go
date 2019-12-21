@@ -86,6 +86,20 @@ type River struct {
 	Level     int
 }
 
+func NewRiver(grid *Grid) *River {
+	y, x := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
+	for grid[y][x].Terrain != TERRAIN_MOUNTAIN {
+		y, x = rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
+	}
+	grid[y][x].Terrain = TERRAIN_RIVER
+	return &River{
+		y:         []int{y},
+		x:         []int{x},
+		pathStack: []int{0},
+		Level:     grid[y][x].Val,
+	}
+}
+
 func (r *River) Y() int {
 	return r.y[r.i()]
 }
@@ -120,8 +134,7 @@ func (r *River) WasAt(y, x int) bool {
 	return false
 }
 
-func (r *River) Move(dir int) {
-	y, x := Inside(r.Y()+DIR_NEXT[dir][0], r.X()+DIR_NEXT[dir][1])
+func (r *River) Move(y, x int) {
 	r.pathStack = append(r.pathStack, len(r.y))
 	r.y = append(r.y, y)
 	r.x = append(r.x, x)
@@ -154,7 +167,9 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 	}
 
 	// delete isolated
-	for i := 0; i < 2; i++ {
+	done := false
+	for !done {
+		done = true
 		for y := range grid {
 			for x := range grid[y] {
 				surroundings := 0
@@ -164,6 +179,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 				}
 				if surroundings*grid[y][x].Val < 0 {
 					grid[y][x].Val *= -1
+					done = false
 				}
 			}
 		}
@@ -260,25 +276,12 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 
 	// rivers
 	var rivers []*River
-	for len(rivers) < NB_RIVERS {
-		y, x := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
-		if grid[y][x].Terrain != TERRAIN_SEA {
-			grid[y][x].Terrain = TERRAIN_RIVER
-			rivers = append(rivers, &River{
-				y:         []int{y},
-				x:         []int{x},
-				pathStack: []int{0},
-				Level:     grid[y][x].Val,
-			})
-		}
-	}
-	for iRiver := 0; iRiver < len(rivers); {
+	rivers = append(rivers, NewRiver(grid))
+	for iRiver := 0; iRiver < NB_RIVERS; {
 		river := rivers[iRiver]
-		println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "level:", river.Level)
 		// for each river not at sea yet, decide where to go
 		highDir, highLevel := -1, river.Level
 		end := false
-		lake := true
 		for _, dir := range rand.Perm(len(DIR_NEXT)) {
 			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[dir][0], river.X()+DIR_NEXT[dir][1])
 			if river.WasAt(nhbY, nhbX) {
@@ -296,11 +299,9 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 				continue
 			}
 			if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER || grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
-				highDir = dir
 				end = true
 				break
 			}
-			lake = false
 			if grid[nhbY][nhbX].Val >= highLevel {
 				highDir = dir
 				highLevel = grid[nhbY][nhbX].Val
@@ -310,15 +311,16 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 		// act
 		if end {
 			// end: skip to next river
+			//println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "level:", river.Level)
+			rivers = append(rivers, NewRiver(grid))
 			iRiver++
-		} else if highDir == -1 || lake {
+		} else if highDir == -1 {
 			// go back
 			if river.Len() > 1 {
 				grid[river.Y()][river.X()].Terrain = TERRAIN_LAND
+				oldY, oldX := river.Y(), river.X()
 				river.GoBack()
-				river.Level = grid[river.Y()][river.X()].Val
-			} else if river.Level < 0 {
-				iRiver++
+				river.Level -= grid[oldY][oldX].Val - grid[river.Y()][river.X()].Val
 			} else {
 				river.Level--
 			}
@@ -326,8 +328,8 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			// move forward
 			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[highDir][0], river.X()+DIR_NEXT[highDir][1])
 			grid[nhbY][nhbX].Terrain = TERRAIN_RIVER
-			river.Move(highDir)
-			river.Level = grid[nhbY][nhbX].Val
+			river.Level += grid[nhbY][nhbX].Val - grid[river.Y()][river.X()].Val
+			river.Move(nhbY, nhbX)
 		}
 	}
 
