@@ -81,30 +81,34 @@ type SquareTerrain struct {
 }
 
 type River struct {
-	i     int
-	y, x  []int
-	dirs  []int
-	Level int
-}
-
-func (r *River) Len() int {
-	return len(r.y)
+	y, x      []int
+	pathStack []int
+	Level     int
 }
 
 func (r *River) Y() int {
-	return r.y[r.i]
+	return r.y[r.i()]
 }
 
 func (r *River) X() int {
-	return r.x[r.i]
+	return r.x[r.i()]
 }
 
-func (r *River) Dir() int {
-	return r.dirs[r.i]
+func (r *River) i() int {
+	return r.pathStack[len(r.pathStack)-1]
 }
 
-func (r *River) I() int {
-	return r.i
+func (r *River) Len() int {
+	return len(r.pathStack)
+}
+
+func (r *River) IsAt(y, x int) bool {
+	for _, i := range r.pathStack {
+		if r.y[i] == y && r.x[i] == x {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *River) WasAt(y, x int) bool {
@@ -116,29 +120,15 @@ func (r *River) WasAt(y, x int) bool {
 	return false
 }
 
-func (r *River) Disallow(dir int) {
-	y, x := Inside(r.Y()+DIR_NEXT[dir][0], r.X()+DIR_NEXT[dir][1])
-	if !r.WasAt(y, x) {
-		r.y = append(r.y, y)
-		r.x = append(r.x, x)
-		r.dirs = append(r.dirs, dir)
-	}
-}
-
 func (r *River) Move(dir int) {
 	y, x := Inside(r.Y()+DIR_NEXT[dir][0], r.X()+DIR_NEXT[dir][1])
-	r.i = len(r.y)
+	r.pathStack = append(r.pathStack, len(r.y))
 	r.y = append(r.y, y)
 	r.x = append(r.x, x)
-	r.dirs = append(r.dirs, dir)
 }
 
-func (r *River) GoBack() bool {
-	if r.i > 0 {
-		r.i--
-		return true
-	}
-	return false
+func (r *River) GoBack() {
+	r.pathStack = r.pathStack[:len(r.pathStack)-1]
 }
 
 func (r *River) SetColor(color Color, grid *Grid) {
@@ -275,86 +265,71 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 		if grid[y][x].Terrain != TERRAIN_SEA {
 			grid[y][x].Terrain = TERRAIN_RIVER
 			rivers = append(rivers, &River{
-				y:     []int{y},
-				x:     []int{x},
-				dirs:  []int{rand.Intn(len(DIR_NEXT))},
-				Level: grid[y][x].Val,
+				y:         []int{y},
+				x:         []int{x},
+				pathStack: []int{0},
+				Level:     grid[y][x].Val,
 			})
 		}
 	}
-	var nbDead, nbMerge int
 	for iRiver := 0; iRiver < len(rivers); {
 		river := rivers[iRiver]
+		println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "level:", river.Level)
 		// for each river not at sea yet, decide where to go
 		highDir, highLevel := -1, river.Level
-		highLDir := -1
-		var end bool
+		end := false
+		lake := true
 		for _, dir := range rand.Perm(len(DIR_NEXT)) {
 			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[dir][0], river.X()+DIR_NEXT[dir][1])
 			if river.WasAt(nhbY, nhbX) {
 				continue
 			}
 			tight := false
-			for _, diro := range DIR_SQUARE {
+			for _, diro := range DIR_NEXT {
 				onY, onX := Inside(nhbY+diro[0], nhbX+diro[1])
-				if onY != river.Y() && onX != river.X() {
-					tight = tight || river.WasAt(onY, onX)
+				if (onY != river.Y() || onX != river.X()) && river.IsAt(onY, onX) {
+					tight = true
+					break
 				}
 			}
 			if tight {
 				continue
 			}
 			if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER || grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
-				// FIXME: merge loops
 				highDir = dir
 				end = true
-				if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER {
-					nbMerge++
-				}
 				break
 			}
+			lake = false
 			if grid[nhbY][nhbX].Val >= highLevel {
 				highDir = dir
 				highLevel = grid[nhbY][nhbX].Val
-				if grid[nhbY][nhbX].Terrain != TERRAIN_RIVER {
-					highLDir = highDir
-				}
 			}
-		}
-
-		println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "i:", river.I(), "level:", river.Level)
-
-		// better to move towards land if sea isn’t nearby
-		if highLDir != -1 && !end {
-			highDir = highLDir
 		}
 
 		// act
-		if highDir == -1 {
+		if end {
+			// end: skip to next river
+			iRiver++
+		} else if highDir == -1 || lake {
 			// go back
-			println(iRiver, ", back")
-			grid[river.Y()][river.X()].Terrain = TERRAIN_LAND
-			backAtSource := !river.GoBack()
-			river.Level--
-			if backAtSource && river.Level < 0 {
+			if river.Len() > 1 {
+				grid[river.Y()][river.X()].Terrain = TERRAIN_LAND
+				river.GoBack()
+				river.Level = grid[river.Y()][river.X()].Val
+			} else if river.Level < 0 {
 				iRiver++
-				nbDead++
+			} else {
+				river.Level--
 			}
-		} else if !end {
+		} else {
 			// move forward
 			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[highDir][0], river.X()+DIR_NEXT[highDir][1])
 			grid[nhbY][nhbX].Terrain = TERRAIN_RIVER
-			river.Level = grid[nhbY][nhbX].Val
 			river.Move(highDir)
-		} else {
-			// skip to next river
-			iRiver++
+			river.Level = grid[nhbY][nhbX].Val
 		}
 	}
-	for iRiver, river := range rivers {
-		river.SetColor(HSVtoRGB(iRiver*240/len(rivers), 1.0, 1.0), grid)
-	}
-	println(len(rivers), "sea:", len(rivers)-nbMerge-nbDead, "merge:", nbMerge, "dead:", nbDead)
 
 	// cities
 	var cities []*City
