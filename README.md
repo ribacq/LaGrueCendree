@@ -1,6 +1,6 @@
 # squaresInSpace (sqis)
 
-![Yay! A 300x150px tapestry style world map!](./sqis150tapestry.png)
+![a pixel art world map](./sqis.png)
 
 Display:
 ```bash

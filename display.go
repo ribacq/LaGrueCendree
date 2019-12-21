@@ -277,6 +277,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 	// rivers
 	var rivers []*River
 	rivers = append(rivers, NewRiver(grid))
+	rLen := 0
 	for iRiver := 0; iRiver < NB_RIVERS; {
 		river := rivers[iRiver]
 		// for each river not at sea yet, decide where to go
@@ -314,6 +315,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			//println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "level:", river.Level)
 			rivers = append(rivers, NewRiver(grid))
 			iRiver++
+			rLen += river.Len()
 		} else if highDir == -1 {
 			// go back
 			if river.Len() > 1 {
@@ -332,6 +334,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			river.Move(nhbY, nhbX)
 		}
 	}
+	println(rLen / NB_RIVERS)
 
 	// cities
 	var cities []*City
