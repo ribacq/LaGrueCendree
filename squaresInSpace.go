@@ -171,7 +171,7 @@ func main() {
 	}
 
 	// end
-	print("\nrendering image...")
+	println("\nrendering image...")
 	nLand, nSea := display(squares)
 	println("done\nLand:", nLand, "Sea:", nSea, "Land%:", 100*nLand/SURFACE)
 }

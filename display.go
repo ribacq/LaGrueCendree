@@ -153,22 +153,53 @@ func (r *River) SetColor(color Color, grid *Grid) {
 }
 
 type City struct {
-	Y, X int
-	Size int
+	CenterY, CenterX int
+	Y, X             []int
+	Size             int
+}
+
+func NewCity(y, x int) *City {
+	return &City{
+		CenterY: y,
+		CenterX: x,
+		Y:       []int{y},
+		X:       []int{x},
+		Size:    0,
+	}
+}
+
+func (c *City) Has(y, x int) bool {
+	for i := range c.Y {
+		if c.Y[i] == y && c.X[i] == x {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *City) AddSquare(y, x int) {
+	if c.Has(y, x) {
+		return
+	}
+	c.Y = append(c.Y, y)
+	c.X = append(c.X, x)
 }
 
 type Country struct {
-	Cities []*City
-	Y      []int
-	X      []int
+	Cities           []*City
+	Y, X             []int
+	BorderY, BorderX []int
+	Color            Color
 }
 
-func NewCountry(city *City) *Country {
+func NewCountry(city *City, color Color) *Country {
 	country := &Country{
 		Cities: []*City{city},
-		Y:      []int{city.Y},
-		X:      []int{city.X},
+		Y:      city.Y,
+		X:      city.X,
+		Color:  color,
 	}
+	country.SharpenBorder()
 	return country
 }
 
@@ -188,6 +219,57 @@ func (c *Country) Has(y, x int) bool {
 func (c *Country) Take(y, x int) {
 	c.Y = append(c.Y, y)
 	c.X = append(c.X, x)
+}
+
+func (c *Country) Leave(y, x int) {
+	for i := range c.Y {
+		if c.Y[i] == y && c.X[i] == x {
+			if i < len(c.Y)-1 {
+				c.Y = append(c.Y[:i], c.Y[i+1:]...)
+				c.X = append(c.X[:i], c.X[i+1:]...)
+			} else {
+				c.Y = c.Y[:i]
+				c.X = c.X[:i]
+			}
+			return
+		}
+	}
+}
+
+func (c *Country) TakeCity(city *City) {
+	c.Cities = append(c.Cities, city)
+	c.Y = append(c.Y, city.Y...)
+	c.X = append(c.X, city.X...)
+}
+
+func (c *Country) ClosestCity(y, x int) *City {
+	dist := -1
+	var cc *City
+	for _, city := range c.Cities {
+		if dist == -1 || (city.CenterY-y)*(city.CenterY-y)+(city.CenterX-x)*(city.CenterX-x) < dist {
+			cc = city
+		}
+	}
+	return cc
+}
+
+func (c *Country) GetMaxDistSquared() int {
+	cFirst := c.Cities[0]
+	cLast := c.Cities[len(c.Cities)-1]
+	mds := (cFirst.CenterY-cLast.CenterY)*(cFirst.CenterY-cLast.CenterY) + (cFirst.CenterX-cLast.CenterX)*(cFirst.CenterX-cLast.CenterX)
+	if mds < MAGIC {
+		return 0
+	}
+	return mds
+}
+
+func (c *Country) SharpenBorder() int {
+	for i := range c.BorderY {
+		for _, dir := range DIR_NEXT {
+			nhbY, nhbX := Inside(c.BorderY[i]+dir[0], c.BorderX[i]+dir[1])
+			// TODO: (*Country).SharpenBorder()
+		}
+	}
 }
 
 type CountryGroup struct {
@@ -210,6 +292,15 @@ func (cg *CountryGroup) CountryCount() int {
 
 func (cg *CountryGroup) Get(i int) *Country {
 	return cg.countries[i]
+}
+
+func (cg *CountryGroup) GetCountryAt(y, x int) (c *Country, ok bool) {
+	for _, c := range cg.countries {
+		if c.Has(y, x) {
+			return c, true
+		}
+	}
+	return c, false
 }
 
 func (cg *CountryGroup) Surface() int {
@@ -407,7 +498,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			river.Move(nhbY, nhbX)
 		}
 	}
-	println(riverSurface, len(rivers))
+	println(len(rivers), "rivers: ", riverSurface)
 
 	// cities
 	var cities []*City
@@ -417,10 +508,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			continue
 		}
 
-		city := &City{
-			Y: y,
-			X: x,
-		}
+		city := NewCity(y, x)
 
 		cityUpsizers := map[int]bool{
 			TERRAIN_SEA:   false,
@@ -440,7 +528,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			}
 		}
 		if rand.Intn(5) < 1 {
-			city.Size += 1
+			city.Size++
 		}
 
 		if city.Size == 0 && rand.Intn(100) < 90 {
@@ -460,6 +548,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND {
 					grid[nhbY][nhbX].Terrain = TERRAIN_CITY
 					grid[nhbY][nhbX].Color = Color{232, 119, 13}
+					city.AddSquare(nhbY, nhbX)
 				}
 			}
 		case 3:
@@ -469,11 +558,13 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND {
 					grid[nhbY][nhbX].Terrain = TERRAIN_CITY
 					grid[nhbY][nhbX].Color = Color{232, 13, 17}
+					city.AddSquare(nhbY, nhbX)
 				}
 			}
 		}
 		cities = append(cities, city)
 	}
+	println(len(cities), "cities")
 
 	// countries and borders
 	cg := NewCountryGroup()
@@ -481,27 +572,48 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 		if i >= NB_COUNTRIES {
 			break
 		}
-		cg.AddCountry(NewCountry(cities[i]))
+		cg.AddCountry(NewCountry(cities[i], Color{
+			R: rand.Intn(256),
+			G: rand.Intn(256),
+			B: rand.Intn(256),
+		}))
 	}
 	done = false
-	println()
 	for !done {
 		done = true
-		print("\r", cg.Surface()*100/nLand)
-		for i := range rand.Perm(cg.CountryCount()) {
+		print("\r", cg.CountryCount(), " countries: ", cg.Surface()*100/nLand)
+		for i := 0; i < cg.CountryCount(); i++ {
 			country := cg.Get(i)
 			for i := range country.Y {
 				y, x := country.Y[i], country.X[i]
+				cc := country.ClosestCity(y, x)
+				distCCsquared := (cc.CenterY-y)*(cc.CenterY-y) + (cc.CenterX-x)*(cc.CenterX-x)
+				mds := country.GetMaxDistSquared()
+				if mds != 0 && distCCsquared > mds {
+					continue
+				}
 				for _, dir := range DIR_NEXT {
 					nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 					if grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
 						continue
 					}
 					if !cg.Has(nhbY, nhbX) {
+						// take new square
+						if grid[nhbY][nhbX].Terrain == TERRAIN_CITY {
+							for _, city := range cities {
+								if city.Has(nhbY, nhbX) {
+									country.TakeCity(city)
+									break
+								}
+							}
+						} else {
+							country.Take(nhbY, nhbX)
+						}
+						done = false
+					} else if oc, _ := cg.GetCountryAt(nhbY, nhbX); oc != country && oc.GetMaxDistSquared() > country.GetMaxDistSquared() {
+						oc.Leave(nhbY, nhbX)
 						country.Take(nhbY, nhbX)
 						done = false
-					} else if grid[nhbY][nhbX].Terrain != TERRAIN_COUNTRY_BORDER && !country.Has(nhbY, nhbX) {
-						grid[y][x].Terrain = TERRAIN_COUNTRY_BORDER
 					}
 				}
 			}
@@ -566,6 +678,19 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 					R: 0,
 					G: 0,
 					B: 255 - v*3/4,
+				}
+			}
+			switch grid[y][x].Terrain {
+			case TERRAIN_LAND, TERRAIN_MOUNTAIN, TERRAIN_CITY:
+				country, ok := cg.GetCountryAt(y, x)
+				if ok {
+					grid[y][x].Color = Color{
+						R: (grid[y][x].Color.R + country.Color.R) / 2,
+						G: (grid[y][x].Color.G + country.Color.G) / 2,
+						B: (grid[y][x].Color.B + country.Color.B) / 2,
+					}
+				} else {
+					grid[y][x].Color = Color{0, 0, 0}
 				}
 			}
 		}
