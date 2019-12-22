@@ -12,11 +12,13 @@ const (
 	TERRAIN_RIVER
 	TERRAIN_CITY
 	TERRAIN_MAP_BORDER
+	TERRAIN_COUNTRY_BORDER
 )
 
 var (
-	NB_RIVERS int = MAGIC
-	NB_CITIES int = MAGIC
+	RIVER_PCT    int = 8
+	NB_CITIES    int = MAGIC
+	NB_COUNTRIES int = MAGIC / 3
 )
 
 var (
@@ -155,6 +157,78 @@ type City struct {
 	Size int
 }
 
+type Country struct {
+	Cities []*City
+	Y      []int
+	X      []int
+}
+
+func NewCountry(city *City) *Country {
+	country := &Country{
+		Cities: []*City{city},
+		Y:      []int{city.Y},
+		X:      []int{city.X},
+	}
+	return country
+}
+
+func (c *Country) Surface() int {
+	return len(c.Y)
+}
+
+func (c *Country) Has(y, x int) bool {
+	for i := range c.Y {
+		if c.Y[i] == y && c.X[i] == x {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Country) Take(y, x int) {
+	c.Y = append(c.Y, y)
+	c.X = append(c.X, x)
+}
+
+type CountryGroup struct {
+	countries []*Country
+}
+
+func NewCountryGroup() *CountryGroup {
+	return &CountryGroup{
+		countries: []*Country{},
+	}
+}
+
+func (cg *CountryGroup) AddCountry(country *Country) {
+	cg.countries = append(cg.countries, country)
+}
+
+func (cg *CountryGroup) CountryCount() int {
+	return len(cg.countries)
+}
+
+func (cg *CountryGroup) Get(i int) *Country {
+	return cg.countries[i]
+}
+
+func (cg *CountryGroup) Surface() int {
+	var s int
+	for _, c := range cg.countries {
+		s += c.Surface()
+	}
+	return s
+}
+
+func (cg *CountryGroup) Has(y, x int) bool {
+	for _, c := range cg.countries {
+		if c.Has(y, x) {
+			return true
+		}
+	}
+	return false
+}
+
 type Grid [GRID_HEIGHT][GRID_WIDTH]SquareTerrain
 
 func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
@@ -277,9 +351,9 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 	// rivers
 	var rivers []*River
 	rivers = append(rivers, NewRiver(grid))
-	rLen := 0
-	for iRiver := 0; iRiver < NB_RIVERS; {
-		river := rivers[iRiver]
+	var riverSurface int
+	for riverSurface < nLand*RIVER_PCT/100 {
+		river := rivers[len(rivers)-1]
 		// for each river not at sea yet, decide where to go
 		highDir, highLevel := -1, river.Level
 		end := false
@@ -312,10 +386,9 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 		// act
 		if end {
 			// end: skip to next river
-			//println(iRiver, "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "level:", river.Level)
+			//println(len(rivers), "y:", river.Y(), "x:", river.X(), "len:", river.Len(), "level:", river.Level)
 			rivers = append(rivers, NewRiver(grid))
-			iRiver++
-			rLen += river.Len()
+			riverSurface += river.Len()
 		} else if highDir == -1 {
 			// go back
 			if river.Len() > 1 {
@@ -334,7 +407,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			river.Move(nhbY, nhbX)
 		}
 	}
-	println(rLen / NB_RIVERS)
+	println(riverSurface, len(rivers))
 
 	// cities
 	var cities []*City
@@ -402,6 +475,40 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 		cities = append(cities, city)
 	}
 
+	// countries and borders
+	cg := NewCountryGroup()
+	for i := range rand.Perm(len(cities)) {
+		if i >= NB_COUNTRIES {
+			break
+		}
+		cg.AddCountry(NewCountry(cities[i]))
+	}
+	done = false
+	println()
+	for !done {
+		done = true
+		print("\r", cg.Surface()*100/nLand)
+		for i := range rand.Perm(cg.CountryCount()) {
+			country := cg.Get(i)
+			for i := range country.Y {
+				y, x := country.Y[i], country.X[i]
+				for _, dir := range DIR_NEXT {
+					nhbY, nhbX := Inside(y+dir[0], x+dir[1])
+					if grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
+						continue
+					}
+					if !cg.Has(nhbY, nhbX) {
+						country.Take(nhbY, nhbX)
+						done = false
+					} else if grid[nhbY][nhbX].Terrain != TERRAIN_COUNTRY_BORDER && !country.Has(nhbY, nhbX) {
+						grid[y][x].Terrain = TERRAIN_COUNTRY_BORDER
+					}
+				}
+			}
+		}
+	}
+	println()
+
 	// map borders
 	if !CONNECT_Y {
 		for x := 0; x < GRID_WIDTH; x++ {
@@ -452,6 +559,8 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 					G: v / 2,
 					B: v,
 				}
+			case TERRAIN_COUNTRY_BORDER:
+				grid[y][x].Color = Color{255, 0, 0}
 			case TERRAIN_SEA:
 				grid[y][x].Color = Color{
 					R: 0,

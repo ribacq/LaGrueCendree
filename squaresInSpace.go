@@ -10,7 +10,7 @@ import (
 
 // make your choice here
 const (
-	GRID_WIDTH  int  = 235
+	GRID_WIDTH  int  = 200
 	GRID_HEIGHT int  = 100
 	CONNECT_Y   bool = false
 	CONNECT_X   bool = false
@@ -171,7 +171,7 @@ func main() {
 	}
 
 	// end
-	print("\nredering image...")
+	print("\nrendering image...")
 	nLand, nSea := display(squares)
 	println("done\nLand:", nLand, "Sea:", nSea, "Land%:", 100*nLand/SURFACE)
 }
