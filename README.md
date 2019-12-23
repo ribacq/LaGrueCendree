@@ -1,4 +1,4 @@
-# squaresInSpace (sqis)
+# Grue Cendrée (common crane)
 
 ![a pixel art world map](./sqis.png)
 
