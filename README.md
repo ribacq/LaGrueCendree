@@ -1,4 +1,4 @@
-# Grue Cendrée (common crane)
+# La Grue Cendrée (the common crane)
 
 ![a pixel art world map](./sqis.png)
 
