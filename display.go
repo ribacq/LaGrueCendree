@@ -18,7 +18,7 @@ const (
 var (
 	RIVER_PCT    int = 8
 	NB_CITIES    int = MAGIC
-	NB_COUNTRIES int = MAGIC / 3
+	NB_COUNTRIES int = 5
 )
 
 var (
@@ -77,9 +77,10 @@ func HSVtoRGB(H int, S, V float64) (out Color) {
 }
 
 type SquareTerrain struct {
-	Val     int
-	Terrain int
-	Color   Color
+	Val          int
+	Terrain      int
+	Color        Color
+	CountryIndex int
 }
 
 type River struct {
@@ -190,6 +191,7 @@ type Country struct {
 	Y, X             []int
 	BorderY, BorderX []int
 	Color            Color
+	maxDistSquared   int
 }
 
 func NewCountry(city *City, color Color) *Country {
@@ -199,7 +201,7 @@ func NewCountry(city *City, color Color) *Country {
 		X:      city.X,
 		Color:  color,
 	}
-	country.SharpenBorder()
+	country.MakeBorder()
 	return country
 }
 
@@ -216,9 +218,29 @@ func (c *Country) Has(y, x int) bool {
 	return false
 }
 
+func (c *Country) HasInBorder(y, x int) bool {
+	for i := range c.BorderY {
+		if c.BorderY[i] == y && c.BorderX[i] == x {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Country) Take(y, x int) {
 	c.Y = append(c.Y, y)
 	c.X = append(c.X, x)
+}
+
+func (c *Country) TakeCity(city *City) {
+	for _, co := range c.Cities {
+		if dist := (co.CenterY-city.CenterY)*(co.CenterY-city.CenterY) + (co.CenterX-city.CenterX)*(co.CenterX-city.CenterX); dist > c.maxDistSquared {
+			c.maxDistSquared = dist
+		}
+	}
+	c.Cities = append(c.Cities, city)
+	c.Y = append(c.Y, city.Y...)
+	c.X = append(c.X, city.X...)
 }
 
 func (c *Country) Leave(y, x int) {
@@ -236,12 +258,6 @@ func (c *Country) Leave(y, x int) {
 	}
 }
 
-func (c *Country) TakeCity(city *City) {
-	c.Cities = append(c.Cities, city)
-	c.Y = append(c.Y, city.Y...)
-	c.X = append(c.X, city.X...)
-}
-
 func (c *Country) ClosestCity(y, x int) *City {
 	dist := -1
 	var cc *City
@@ -254,20 +270,20 @@ func (c *Country) ClosestCity(y, x int) *City {
 }
 
 func (c *Country) GetMaxDistSquared() int {
-	cFirst := c.Cities[0]
-	cLast := c.Cities[len(c.Cities)-1]
-	mds := (cFirst.CenterY-cLast.CenterY)*(cFirst.CenterY-cLast.CenterY) + (cFirst.CenterX-cLast.CenterX)*(cFirst.CenterX-cLast.CenterX)
-	if mds < MAGIC {
-		return 0
-	}
-	return mds
+	return 0 //c.maxDistSquared
 }
 
-func (c *Country) SharpenBorder() int {
-	for i := range c.BorderY {
+func (c *Country) MakeBorder() {
+	c.BorderY = []int{}
+	c.BorderX = []int{}
+	for i := 0; i < len(c.Y); i++ {
 		for _, dir := range DIR_NEXT {
-			nhbY, nhbX := Inside(c.BorderY[i]+dir[0], c.BorderX[i]+dir[1])
-			// TODO: (*Country).SharpenBorder()
+			nhbY, nhbX := Inside(c.Y[i]+dir[0], c.X[i]+dir[1])
+			if !c.Has(nhbY, nhbX) {
+				c.BorderY = append(c.BorderY, c.Y[i])
+				c.BorderX = append(c.BorderX, c.X[i])
+				break
+			}
 		}
 	}
 }
@@ -314,6 +330,15 @@ func (cg *CountryGroup) Surface() int {
 func (cg *CountryGroup) Has(y, x int) bool {
 	for _, c := range cg.countries {
 		if c.Has(y, x) {
+			return true
+		}
+	}
+	return false
+}
+
+func (cg *CountryGroup) HasInBorders(y, x int) bool {
+	for _, c := range cg.countries {
+		if c.HasInBorder(y, x) {
 			return true
 		}
 	}
@@ -498,7 +523,7 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 			river.Move(nhbY, nhbX)
 		}
 	}
-	println(len(rivers), "rivers: ", riverSurface)
+	println(len(rivers), "rivers:", riverSurface)
 
 	// cities
 	var cities []*City
@@ -567,59 +592,86 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 	println(len(cities), "cities")
 
 	// countries and borders
+	for y := range grid {
+		for x := range grid[y] {
+			grid[y][x].CountryIndex = -1
+		}
+	}
 	cg := NewCountryGroup()
 	for i := range rand.Perm(len(cities)) {
 		if i >= NB_COUNTRIES {
 			break
 		}
-		cg.AddCountry(NewCountry(cities[i], Color{
-			R: rand.Intn(256),
-			G: rand.Intn(256),
-			B: rand.Intn(256),
-		}))
+		cg.AddCountry(NewCountry(cities[i], HSVtoRGB(i*240/NB_COUNTRIES, .5, .5)))
+		for j := range cities[i].Y {
+			grid[cities[i].Y[j]][cities[i].X[j]].CountryIndex = cg.CountryCount() - 1
+		}
 	}
-	done = false
-	for !done {
+	for done := false; !done; {
 		done = true
-		print("\r", cg.CountryCount(), " countries: ", cg.Surface()*100/nLand)
-		for i := 0; i < cg.CountryCount(); i++ {
-			country := cg.Get(i)
-			for i := range country.Y {
-				y, x := country.Y[i], country.X[i]
+		print("\r", cg.CountryCount(), " countries: ", 100*cg.Surface()/nLand)
+	countriesLoop:
+		for ic := 0; ic < cg.CountryCount(); ic++ {
+			country := cg.Get(ic)
+			for _, ib := range rand.Perm(len(country.BorderY)) {
+				y, x := country.BorderY[ib], country.BorderX[ib]
 				cc := country.ClosestCity(y, x)
 				distCCsquared := (cc.CenterY-y)*(cc.CenterY-y) + (cc.CenterX-x)*(cc.CenterX-x)
 				mds := country.GetMaxDistSquared()
 				if mds != 0 && distCCsquared > mds {
 					continue
 				}
-				for _, dir := range DIR_NEXT {
+				for _, dir := range DIRECTIONS {
 					nhbY, nhbX := Inside(y+dir[0], x+dir[1])
-					if grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
+					if grid[nhbY][nhbX].Terrain == TERRAIN_SEA || grid[nhbY][nhbX].Terrain == TERRAIN_RIVER {
 						continue
 					}
-					if !cg.Has(nhbY, nhbX) {
+					if grid[nhbY][nhbX].CountryIndex == -1 {
 						// take new square
 						if grid[nhbY][nhbX].Terrain == TERRAIN_CITY {
 							for _, city := range cities {
 								if city.Has(nhbY, nhbX) {
 									country.TakeCity(city)
+									for j := range city.Y {
+										grid[city.Y[j]][city.X[j]].CountryIndex = ic
+									}
 									break
 								}
 							}
 						} else {
 							country.Take(nhbY, nhbX)
+							grid[nhbY][nhbX].CountryIndex = ic
 						}
 						done = false
-					} else if oc, _ := cg.GetCountryAt(nhbY, nhbX); oc != country && oc.GetMaxDistSquared() > country.GetMaxDistSquared() {
-						oc.Leave(nhbY, nhbX)
-						country.Take(nhbY, nhbX)
-						done = false
+						continue countriesLoop
 					}
 				}
 			}
+			country.MakeBorder()
 		}
 	}
 	println()
+	for i := 0; i < cg.CountryCount(); i++ {
+		country := cg.Get(i)
+		for j := range country.BorderY {
+			y, x := country.BorderY[j], country.BorderX[j]
+			trace := true
+			for _, dir := range DIR_NEXT {
+				yo, xo := Inside(y+dir[0], x+dir[1])
+				if grid[yo][xo].Terrain == TERRAIN_SEA || grid[yo][xo].Terrain == TERRAIN_RIVER || grid[yo][xo].Terrain == TERRAIN_CITY {
+					trace = false
+					break
+				}
+				if grid[yo][xo].CountryIndex != i && grid[yo][xo].Terrain == TERRAIN_COUNTRY_BORDER {
+					trace = false
+					break
+				}
+			}
+			if trace {
+				grid[y][x].Terrain = TERRAIN_COUNTRY_BORDER
+			}
+		}
+	}
 
 	// map borders
 	if !CONNECT_Y {
@@ -672,25 +724,12 @@ func display(squares [GRID_HEIGHT][GRID_WIDTH]int) (nLand, nSea int) {
 					B: v,
 				}
 			case TERRAIN_COUNTRY_BORDER:
-				grid[y][x].Color = Color{255, 0, 0}
+				grid[y][x].Color = Color{255, 0, 0} //cg.Get(grid[y][x].CountryIndex).Color
 			case TERRAIN_SEA:
 				grid[y][x].Color = Color{
 					R: 0,
 					G: 0,
 					B: 255 - v*3/4,
-				}
-			}
-			switch grid[y][x].Terrain {
-			case TERRAIN_LAND, TERRAIN_MOUNTAIN, TERRAIN_CITY:
-				country, ok := cg.GetCountryAt(y, x)
-				if ok {
-					grid[y][x].Color = Color{
-						R: (grid[y][x].Color.R + country.Color.R) / 2,
-						G: (grid[y][x].Color.G + country.Color.G) / 2,
-						B: (grid[y][x].Color.B + country.Color.B) / 2,
-					}
-				} else {
-					grid[y][x].Color = Color{0, 0, 0}
 				}
 			}
 		}
