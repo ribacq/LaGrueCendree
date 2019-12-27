@@ -9,10 +9,14 @@ const (
 	TERRAIN_SEA = iota
 	TERRAIN_LAND
 	TERRAIN_MOUNTAIN
-	TERRAIN_RIVER
-	TERRAIN_CITY
 	TERRAIN_MAP_BORDER
-	TERRAIN_COUNTRY_BORDER
+)
+
+const (
+	FEATURE_NONE = iota
+	FEATURE_RIVER
+	FEATURE_CITY
+	FEATURE_COUNTRY_BORDER
 )
 
 var (
@@ -88,6 +92,7 @@ type Grid [GRID_HEIGHT][GRID_WIDTH]*SquareTerrain
 type SquareTerrain struct {
 	Val          int
 	Terrain      int
+	Feature      int
 	Colors       [SQUARE_HEIGHT][SQUARE_WIDTH]color.Color
 	CountryIndex int
 }
@@ -119,7 +124,7 @@ func NewRiver(grid *Grid) *River {
 	for grid[y][x].Terrain != TERRAIN_MOUNTAIN {
 		y, x = rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
 	}
-	grid[y][x].Terrain = TERRAIN_RIVER
+	grid[y][x].Feature = FEATURE_RIVER
 	return &River{
 		y:         []int{y},
 		x:         []int{x},
@@ -391,7 +396,8 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 	for y := range grid {
 		for x := range grid[y] {
 			grid[y][x] = &SquareTerrain{
-				Val: terrain[y][x],
+				Val:     terrain[y][x],
+				Feature: FEATURE_NONE,
 			}
 		}
 	}
@@ -530,7 +536,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 			if tight {
 				continue
 			}
-			if grid[nhbY][nhbX].Terrain == TERRAIN_RIVER || grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
+			if grid[nhbY][nhbX].Feature == FEATURE_RIVER || grid[nhbY][nhbX].Terrain == TERRAIN_SEA {
 				end = true
 				break
 			}
@@ -548,7 +554,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 		} else if highDir == -1 {
 			// go back
 			if river.Len() > 1 {
-				grid[river.Y()][river.X()].Terrain = TERRAIN_LAND
+				grid[river.Y()][river.X()].Feature = FEATURE_NONE
 				oldY, oldX := river.Y(), river.X()
 				river.GoBack()
 				river.Level -= grid[oldY][oldX].Val - grid[river.Y()][river.X()].Val
@@ -560,7 +566,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 		} else {
 			// move forward
 			nhbY, nhbX := Inside(river.Y()+DIR_NEXT[highDir][0], river.X()+DIR_NEXT[highDir][1])
-			grid[nhbY][nhbX].Terrain = TERRAIN_RIVER
+			grid[nhbY][nhbX].Feature = FEATURE_RIVER
 			river.Level += grid[nhbY][nhbX].Val - grid[river.Y()][river.X()].Val
 			river.Move(nhbY, nhbX)
 		}
@@ -571,27 +577,26 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 	var cities []*City
 	for len(cities) < NB_CITIES {
 		y, x := rand.Intn(GRID_HEIGHT), rand.Intn(GRID_WIDTH)
-		if grid[y][x].Terrain != TERRAIN_LAND {
+		if grid[y][x].Terrain != TERRAIN_LAND || grid[y][x].Feature != FEATURE_NONE {
 			continue
 		}
 
 		city := NewCity(y, x)
 
-		cityUpsizers := map[int]bool{
-			TERRAIN_SEA:   false,
-			TERRAIN_RIVER: false,
+		cityUpsizers := []func(st *SquareTerrain) bool{
+			func(st *SquareTerrain) bool {
+				return st.Terrain == TERRAIN_SEA
+			},
+			func(st *SquareTerrain) bool {
+				return st.Feature == FEATURE_RIVER
+			},
 		}
 		for _, dir := range DIRECTIONS {
 			nhbY, nhbX := Inside(y+dir[0], x+dir[1])
-			for terrain := range cityUpsizers {
-				if grid[nhbY][nhbX].Terrain == terrain {
-					cityUpsizers[terrain] = true
+			for i := range cityUpsizers {
+				if cityUpsizers[i](grid[nhbY][nhbX]) {
+					city.Size++
 				}
-			}
-		}
-		for _, ok := range cityUpsizers {
-			if ok {
-				city.Size++
 			}
 		}
 		if rand.Intn(5) < 1 {
@@ -602,7 +607,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 			continue
 		}
 
-		grid[y][x].Terrain = TERRAIN_CITY
+		grid[y][x].Feature = FEATURE_CITY
 		switch city.Size {
 		case 0:
 			grid[y][x].SetColor(color.Black)
@@ -612,8 +617,8 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 			grid[y][x].SetColor(color.White)
 			for _, dir := range DIR_SQUARE {
 				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
-				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND {
-					grid[nhbY][nhbX].Terrain = TERRAIN_CITY
+				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND && grid[nhbY][nhbX].Feature == FEATURE_NONE {
+					grid[nhbY][nhbX].Feature = FEATURE_CITY
 					v := uint8(grid[nhbY][nhbX].Val)
 					grid[nhbY][nhbX].SetRGBA(v/2, v, 0, 255)
 					city.AddSquare(nhbY, nhbX)
@@ -623,8 +628,8 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 			grid[y][x].SetColor(color.White)
 			for _, dir := range DIRECTIONS {
 				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
-				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND {
-					grid[nhbY][nhbX].Terrain = TERRAIN_CITY
+				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND && grid[nhbY][nhbX].Feature == FEATURE_NONE {
+					grid[nhbY][nhbX].Feature = FEATURE_CITY
 					v := uint8(grid[nhbY][nhbX].Val)
 					grid[nhbY][nhbX].SetRGBA(v/2, v, 0, 255)
 					city.AddSquare(nhbY, nhbX)
@@ -661,12 +666,12 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 				y, x := country.BorderY[ib], country.BorderX[ib]
 				for _, dir := range DIR_NEXT {
 					nhbY, nhbX := Inside(y+dir[0], x+dir[1])
-					if grid[nhbY][nhbX].Terrain == TERRAIN_SEA || grid[nhbY][nhbX].Terrain == TERRAIN_RIVER {
+					if grid[nhbY][nhbX].Terrain == TERRAIN_SEA || grid[nhbY][nhbX].Feature == FEATURE_RIVER {
 						continue
 					}
 					if grid[nhbY][nhbX].CountryIndex == -1 {
 						// take new square
-						if grid[nhbY][nhbX].Terrain == TERRAIN_CITY {
+						if grid[nhbY][nhbX].Feature == FEATURE_CITY {
 							for _, city := range cities {
 								if city.Has(nhbY, nhbX) {
 									country.TakeCity(city)
@@ -696,17 +701,17 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 			trace := true
 			for _, dir := range DIR_NEXT {
 				yo, xo := Inside(y+dir[0], x+dir[1])
-				if grid[yo][xo].Terrain == TERRAIN_SEA || grid[yo][xo].Terrain == TERRAIN_RIVER {
+				if grid[yo][xo].Terrain == TERRAIN_SEA || grid[yo][xo].Feature == FEATURE_RIVER {
 					trace = false
 					break
 				}
-				if grid[yo][xo].CountryIndex != i && grid[yo][xo].Terrain == TERRAIN_COUNTRY_BORDER {
+				if grid[yo][xo].CountryIndex != i && grid[yo][xo].Feature == FEATURE_COUNTRY_BORDER {
 					trace = false
 					break
 				}
 			}
 			if trace {
-				grid[y][x].Terrain = TERRAIN_COUNTRY_BORDER
+				grid[y][x].Feature = FEATURE_COUNTRY_BORDER
 			}
 		}
 	}
@@ -747,10 +752,6 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 				grid[y][x].SetRGBA(v/2, v, 0, 255)
 			case TERRAIN_MOUNTAIN:
 				grid[y][x].SetRGBA(uint8(int(v)*224/255), uint8(int(v)*228/255), uint8(int(v)*170/255), 255)
-			case TERRAIN_RIVER:
-				grid[y][x].SetRGBA(v/4, v/2, v, 255)
-			case TERRAIN_COUNTRY_BORDER:
-				grid[y][x].SetRGBA(255, 0, 0, 255)
 			case TERRAIN_SEA:
 				grid[y][x].SetRGBA(0, 0, uint8(255-int(v)*3/4), 255)
 			}
