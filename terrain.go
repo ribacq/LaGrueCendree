@@ -1,20 +1,9 @@
-// See LICENSE file for legal info
-// Quentin RIBAC, december 2019
 package main
 
 import (
 	"math"
 	"math/rand"
 	"sync"
-)
-
-// make your choice here
-const (
-	GRID_WIDTH  int  = 940
-	GRID_HEIGHT int  = 400
-	CONNECT_Y   bool = false
-	CONNECT_X   bool = false
-	GIF         bool = false
 )
 
 // handle with care
@@ -69,7 +58,7 @@ func Inside(y, x int) (int, int) {
 	return y, x
 }
 
-func main() {
+func GenerateTerrain() [GRID_HEIGHT][GRID_WIDTH]int {
 	var squares [GRID_HEIGHT][GRID_WIDTH]int
 	println(GRID_WIDTH, "x", GRID_HEIGHT, "f", FRAMES)
 
@@ -161,17 +150,8 @@ func main() {
 			}
 		}
 		wg.Wait()
-
-		// display
-		if GIF {
-			print("\trendering image... ")
-			display(squares)
-			print("done")
-		}
 	}
+	println()
 
-	// end
-	println("\nrendering image...")
-	nLand, nSea := display(squares)
-	println("done\nLand:", nLand, "Sea:", nSea, "Land%:", 100*nLand/SURFACE)
+	return squares
 }
