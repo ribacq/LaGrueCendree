@@ -7,7 +7,7 @@ const (
 	GRID_WIDTH  int  = 200
 	GRID_HEIGHT int  = 100
 	CONNECT_Y   bool = false
-	CONNECT_X   bool = false
+	CONNECT_X   bool = true
 )
 
 func main() {

@@ -18,9 +18,11 @@ func (grid *Grid) DecorateFeatures() {
 						connections[i] = true
 					}
 				}
-				st.DecorateRiver(connections)
+				st.DrawRiver(connections)
 			case FEATURE_CITY:
 				st.DrawHouse()
+			case FEATURE_COUNTRY_BORDER:
+				st.DrawCountryBorder()
 			}
 		}
 	}
@@ -41,35 +43,31 @@ func (st *SquareTerrain) Draw(shape string, colors map[byte]color.Color) error {
 	return nil
 }
 
-func (st *SquareTerrain) DecorateRiver(connections [len(DIR_NEXT)]bool) {
-	var forbidden [SQUARE_HEIGHT][SQUARE_WIDTH]bool
+func (st *SquareTerrain) DrawRiver(connections [len(DIR_NEXT)]bool) {
+	var riverY, riverX []int
 	for i, dir := range DIR_NEXT {
-		if !connections[i] {
+		if connections[i] {
 			if dir[0] == 0 {
-				for sy := 0; sy < SQUARE_HEIGHT; sy++ {
-					forbidden[sy][(SQUARE_WIDTH-dir[1])%(SQUARE_WIDTH+1)] = true
-					forbidden[sy][(SQUARE_WIDTH-2*dir[1])%(SQUARE_WIDTH+1)] = true
+				for sy := 2; sy < SQUARE_WIDTH-2; sy++ {
+					riverY = append(riverY, sy, sy)
+					riverX = append(riverX, (SQUARE_WIDTH-dir[1])%(SQUARE_WIDTH+1), (SQUARE_WIDTH-2*dir[1])%(SQUARE_WIDTH+1))
 				}
 			} else if dir[1] == 0 {
-				for sx := 0; sx < SQUARE_WIDTH; sx++ {
-					forbidden[(SQUARE_HEIGHT-dir[0])%(SQUARE_HEIGHT+1)][sx] = true
-					forbidden[(SQUARE_HEIGHT-2*dir[0])%(SQUARE_HEIGHT+1)][sx] = true
+				for sx := 2; sx < SQUARE_HEIGHT-2; sx++ {
+					riverY = append(riverY, (SQUARE_HEIGHT-dir[0])%(SQUARE_HEIGHT+1), (SQUARE_HEIGHT-2*dir[0])%(SQUARE_HEIGHT+1))
+					riverX = append(riverX, sx, sx)
 				}
 			}
 		}
 	}
-	for sy := range st.Colors {
-		for sx := range st.Colors[sy] {
-			if forbidden[sy][sx] {
-				continue
-			}
+	for sy := 2; sy < len(st.Colors)-2; sy++ {
+		for sx := 2; sx < len(st.Colors[sy])-2; sx++ {
 			if rand.Intn(SQUARE_HEIGHT*SQUARE_WIDTH/3) < 1 {
-				r, g, b, a := st.Colors[sy][sx].RGBA()
 				st.Colors[sy][sx] = color.RGBA{
-					R: uint8(r),
-					G: uint8(g),
-					B: uint8((int(b) + 255) / 2),
-					A: uint8(a),
+					R: uint8(st.Val / 4),
+					G: uint8(st.Val / 2),
+					B: uint8((st.Val + 255) / 2),
+					A: 255,
 				}
 			} else {
 				st.Colors[sy][sx] = color.RGBA{
@@ -79,6 +77,14 @@ func (st *SquareTerrain) DecorateRiver(connections [len(DIR_NEXT)]bool) {
 					A: 255,
 				}
 			}
+		}
+	}
+	for i := range riverY {
+		st.Colors[riverY[i]][riverX[i]] = color.RGBA{
+			R: uint8(st.Val / 4),
+			G: uint8(st.Val / 2),
+			B: uint8(st.Val),
+			A: 255,
 		}
 	}
 }
@@ -98,5 +104,13 @@ func (st *SquareTerrain) DrawHouse() {
 	err := st.Draw(shape, colors)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func (st *SquareTerrain) DrawCountryBorder() {
+	for sy := 0; sy < 2; sy++ {
+		for sx := 0; sx < 2; sx++ {
+			st.Colors[SQUARE_HEIGHT/2-1+sy][SQUARE_WIDTH/2-1+sx] = color.RGBA{255, 0, 0, 255}
+		}
 	}
 }
