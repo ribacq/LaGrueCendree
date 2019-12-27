@@ -614,7 +614,8 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND {
 					grid[nhbY][nhbX].Terrain = TERRAIN_CITY
-					//grid[nhbY][nhbX].SetRGBA(232, 119, 13, 255)
+					v := uint8(grid[nhbY][nhbX].Val)
+					grid[nhbY][nhbX].SetRGBA(v/2, v, 0, 255)
 					city.AddSquare(nhbY, nhbX)
 				}
 			}
@@ -624,7 +625,8 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND {
 					grid[nhbY][nhbX].Terrain = TERRAIN_CITY
-					//grid[nhbY][nhbX].SetRGBA(232, 13, 17, 255)
+					v := uint8(grid[nhbY][nhbX].Val)
+					grid[nhbY][nhbX].SetRGBA(v/2, v, 0, 255)
 					city.AddSquare(nhbY, nhbX)
 				}
 			}
