@@ -435,6 +435,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 			}
 		}
 	}
+	println("Land:", nLand, "Sea:", nSea, "Land%:", nLand*100/SURFACE)
 
 	// smooth and detect min and max land and sea
 	minL, maxL, minS, maxS := -1, -1, -1, -1
