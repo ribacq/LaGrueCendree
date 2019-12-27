@@ -609,12 +609,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 
 		grid[y][x].Feature = FEATURE_CITY
 		switch city.Size {
-		case 0:
-			grid[y][x].SetColor(color.Black)
-		case 1:
-			grid[y][x].SetColor(color.White)
 		case 2:
-			grid[y][x].SetColor(color.White)
 			for _, dir := range DIR_SQUARE {
 				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND && grid[nhbY][nhbX].Feature == FEATURE_NONE {
@@ -625,7 +620,6 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 				}
 			}
 		case 3:
-			grid[y][x].SetColor(color.White)
 			for _, dir := range DIRECTIONS {
 				nhbY, nhbX := Inside(y+dir[0], x+dir[1])
 				if grid[nhbY][nhbX].Terrain == TERRAIN_LAND && grid[nhbY][nhbX].Feature == FEATURE_NONE {
