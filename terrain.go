@@ -158,6 +158,11 @@ func GenerateTerrain() [GRID_HEIGHT][GRID_WIDTH]int {
 
 func GenerateTerrainQuick() [GRID_HEIGHT][GRID_WIDTH]int {
 	var squares [GRID_HEIGHT][GRID_WIDTH]int
+	for y := range squares {
+		for x := range squares[y] {
+			squares[y][x] = rand.Intn(len(DIRECTIONS)) - len(DIRECTIONS)*50/100
+		}
+	}
 	for i, y := range rand.Perm(len(squares)) {
 		print("\r", i)
 		for _, x := range rand.Perm(len(squares[y])) {
@@ -166,7 +171,8 @@ func GenerateTerrainQuick() [GRID_HEIGHT][GRID_WIDTH]int {
 				yo, xo := Inside(y+dir[0], x+dir[1])
 				s += Sign(squares[yo][xo])
 			}
-			squares[y][x] = s + rand.Intn(len(DIRECTIONS)) - len(DIRECTIONS)/2
+			squares[y][x] += s
+			squares[y][x] /= 2
 		}
 	}
 	println()
