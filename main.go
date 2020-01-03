@@ -9,8 +9,8 @@ import (
 
 // make your choice here
 const (
-	GRID_WIDTH  int  = 300
-	GRID_HEIGHT int  = 150
+	GRID_WIDTH  int  = 400
+	GRID_HEIGHT int  = 200
 	CONNECT_Y   bool = false
 	CONNECT_X   bool = false
 )

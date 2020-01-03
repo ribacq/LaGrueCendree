@@ -657,6 +657,7 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 	countriesLoop:
 		for ic := 0; ic < cg.CountryCount(); ic++ {
 			country := cg.Get(ic)
+			country.SharpenBorder()
 			for _, ib := range rand.Perm(len(country.BorderY)) {
 				y, x := country.BorderY[ib], country.BorderX[ib]
 				for _, dir := range DIR_NEXT {
@@ -685,7 +686,6 @@ func AddFeaturesToTerrain(terrain [GRID_HEIGHT][GRID_WIDTH]int) *Grid {
 					}
 				}
 			}
-			country.SharpenBorder()
 		}
 	}
 	println()
